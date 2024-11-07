@@ -1,0 +1,113 @@
+// Define pins for the Ultrasonic Sensor and LEDs
+const int trigPin = 11;      // Trig pin for the ultrasonic sensor
+const int echoPin = 10;      // Echo pin for the ultrasonic sensor
+const int greenLED = 2;      // Pin for Green LED
+const int yellowLED = 3;     // Pin for Yellow LED
+const int redLED = 4;        // Pin for Red LED
+const int joyYPin = A4;      // Pin for the joystick's vertical movement (Y-axis)
+
+// Variables to control the distance range thresholds
+int minRange = 10;           // Minimum range for red LED
+int maxRange = 20;           // Maximum range for green LED
+long duration;
+int distance;
+
+void setup() {
+  // Initialize the serial monitor for debugging
+  Serial.begin(9600);
+  
+  // Set ultrasonic sensor pins
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  // Set LED pins
+  pinMode(greenLED, OUTPUT);
+  pinMode(yellowLED, OUTPUT);
+  pinMode(redLED, OUTPUT);
+  
+  // Turn off all LEDs initially
+  digitalWrite(greenLED, LOW);
+  digitalWrite(yellowLED, LOW);
+  digitalWrite(redLED, LOW);
+}
+
+void loop() {
+  // Update distance range thresholds based on joystick value
+  adjustRange();
+  
+  // Measure distance using the ultrasonic sensor
+  distance = getDistance();
+  
+  // Update LEDs based on the measured distance
+  updateLEDs(distance);
+  
+  // Print distance and range values for debugging
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.print(" cm | Range: ");
+  Serial.print(minRange);
+  Serial.print(" - ");
+  Serial.println(maxRange);
+  
+  delay(100);  // Slightly longer delay for stable readings
+}
+
+// Function to measure distance
+int getDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  // Calculate distance based on the return time of the echo
+  duration = pulseIn(echoPin, HIGH);
+  
+  // Return -1 if no echo received within a timeout (indicating out of range)
+  if (duration == 0) return -1;
+  
+  // Calculate distance (speed of sound ~ 0.034 cm/us)
+  int distance = duration * 0.034 / 2;
+  
+  return distance;
+}
+
+// Function to adjust the distance range based on joystick value
+void adjustRange() {
+  int joyYValue = analogRead(joyYPin);
+  
+  // Map joystick Y-axis reading to control both minRange and maxRange
+  minRange = map(joyYValue, 0, 1023, 5, 10);   // minRange varies from 5 to 15 cm
+  maxRange = map(joyYValue, 0, 1023, 20, 30);  // maxRange varies from 20 to 30 cm
+  
+  // Ensure minRange does not exceed maxRange for safe operation
+  if (minRange > maxRange) minRange = maxRange - 1;
+}
+
+// Function to update LEDs based on distance
+void updateLEDs(int distance) {
+  // Turn off all LEDs if out of range
+  if (distance == -1) {
+    digitalWrite(greenLED, LOW);
+    digitalWrite(yellowLED, LOW);
+    digitalWrite(redLED, LOW);
+    return;
+  }
+  
+  if (distance > maxRange) {
+    // Turn on Green LED only
+    digitalWrite(greenLED, HIGH);
+    digitalWrite(yellowLED, LOW);
+    digitalWrite(redLED, LOW);
+  } else if (distance <= maxRange && distance > minRange) {
+    // Turn on Yellow LED only
+    digitalWrite(greenLED, LOW);
+    digitalWrite(yellowLED, HIGH);
+    digitalWrite(redLED, LOW);
+  } else if (distance <= minRange) {
+    // Turn on Red LED only
+    digitalWrite(greenLED, LOW);
+    digitalWrite(yellowLED, LOW);
+    digitalWrite(redLED, HIGH);
+  }
+}
