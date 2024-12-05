@@ -1,0 +1,173 @@
+// Encoder Pins
+const int encoderC1 = 2; // Encoder Channel A (Interrupt Pin)
+const int encoderC2 = 3; // Encoder Channel B
+
+// Motor control pins
+const int motorIn1 = 6;  // H-Bridge IN1
+const int motorIn2 = 7;  // H-Bridge IN2
+const int motorEnable = 5;  // H-Bridge Enable for speed control
+
+// LCD Pins (4-bit mode)
+const int rs = 12;
+const int en = 13;
+const int d4 = 8;
+const int d5 = 9;
+const int d6 = 10;
+const int d7 = 11;
+
+// Encoder variables
+volatile int pulseCount = 0; // Total encoder pulses
+const int PPR = 500;         // Pulses per revolution (set according to your encoder)
+
+// Motor direction
+volatile bool motorForward = true;
+
+void setup() {
+  // Set motor control pins as outputs
+  pinMode(motorIn1, OUTPUT);
+  pinMode(motorIn2, OUTPUT);
+  pinMode(motorEnable, OUTPUT);
+
+  // Set encoder pins as inputs
+  pinMode(encoderC1, INPUT_PULLUP);
+  pinMode(encoderC2, INPUT_PULLUP);
+
+  // Attach interrupt to encoder C1 pin
+  attachInterrupt(digitalPinToInterrupt(encoderC1), updatePulseCount, CHANGE);
+
+  // Initialize Serial Monitor for debugging
+  Serial.begin(9600);
+
+  // Initialize the LCD
+  initLCD();
+
+  // Display a static message on the LCD
+  lcdClear();
+  lcdWriteString("Motor Angle:");
+}
+
+void loop() {
+  // Read potentiometer value
+  int potValue = analogRead(A0); // Value from 0 to 1023
+
+  // Map potentiometer value to motor speed (0 to 255)
+  int motorSpeed = map(potValue, 0, 1023, 0, 255);
+
+  // Apply motor speed (PWM control)
+  analogWrite(motorEnable, motorSpeed);
+
+  // Determine motor direction
+  if (potValue > 512) {
+    // Move forward
+    digitalWrite(motorIn1, HIGH);
+    digitalWrite(motorIn2, LOW);
+    motorForward = true;
+  } else if (potValue < 512) {
+    // Move backward
+    digitalWrite(motorIn1, LOW);
+    digitalWrite(motorIn2, HIGH);
+    motorForward = false;
+  } else {
+    // Stop motor
+    digitalWrite(motorIn1, LOW);
+    digitalWrite(motorIn2, LOW);
+    motorSpeed = 0; // Stop speed
+  }
+
+  // Calculate angle based on encoder pulses
+  float angle = (float)pulseCount / PPR * 360;
+
+  // Ensure angle remains within 0-360 degrees
+  angle = fmod(angle, 360); // Modulo to keep within 360 degrees
+  if (angle < 0) angle += 360;
+
+  // Update LCD
+  lcdCommand(0xC0); // Move cursor to the second line
+  lcdWriteString("Angle: ");
+  lcdWriteInt((int)angle);
+
+  delay(100); // Small delay for stability
+}
+
+// Interrupt service routine for encoder
+void updatePulseCount() {
+  int stateC1 = digitalRead(encoderC1);
+  int stateC2 = digitalRead(encoderC2);
+
+  // Determine direction and update pulse count
+  if (stateC1 == stateC2) {
+    pulseCount += motorForward ? 1 : -1;
+  } else {
+    pulseCount += motorForward ? -1 : 1;
+  }
+}
+
+// Function to initialize LCD in 4-bit mode
+void initLCD() {
+  pinMode(rs, OUTPUT);
+  pinMode(en, OUTPUT);
+  pinMode(d4, OUTPUT);
+  pinMode(d5, OUTPUT);
+  pinMode(d6, OUTPUT);
+  pinMode(d7, OUTPUT);
+
+  delay(50); // Wait for LCD to power up
+  lcdCommand(0x33); // Initialize LCD in 8-bit mode
+  lcdCommand(0x32); // Set to 4-bit mode
+  lcdCommand(0x28); // 2-line, 5x8 matrix
+  lcdCommand(0x0C); // Turn on LCD, no cursor
+  lcdCommand(0x06); // Increment cursor
+  lcdCommand(0x01); // Clear screen
+  delay(5);
+}
+
+// Function to send command to LCD
+void lcdCommand(uint8_t cmd) {
+  digitalWrite(rs, LOW); // Select command mode
+  send4Bits(cmd >> 4);   // Send upper nibble
+  send4Bits(cmd);        // Send lower nibble
+}
+
+// Function to send data to LCD
+void lcdWrite(uint8_t data) {
+  digitalWrite(rs, HIGH); // Select data mode
+  send4Bits(data >> 4);   // Send upper nibble
+  send4Bits(data);        // Send lower nibble
+}
+
+// Function to send 4 bits to LCD
+void send4Bits(uint8_t value) {
+  digitalWrite(d4, (value >> 0) & 0x01);
+  digitalWrite(d5, (value >> 1) & 0x01);
+  digitalWrite(d6, (value >> 2) & 0x01);
+  digitalWrite(d7, (value >> 3) & 0x01);
+  pulseEnable();
+}
+
+// Function to pulse the enable pin
+void pulseEnable() {
+  digitalWrite(en, HIGH);
+  delayMicroseconds(1);
+  digitalWrite(en, LOW);
+  delayMicroseconds(100);
+}
+
+// Function to clear the LCD screen
+void lcdClear() {
+  lcdCommand(0x01); // Clear display
+  delay(2);         // Wait for the command to execute
+}
+
+// Function to display an integer on the LCD
+void lcdWriteInt(int value) {
+  char buffer[10];
+  itoa(value, buffer, 10); // Convert integer to string
+  lcdWriteString(buffer);  // Display the string
+}
+
+// Function to write a string to the LCD
+void lcdWriteString(const char *str) {
+  while (*str) {
+    lcdWrite(*str++);
+  }
+}
